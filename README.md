@@ -125,6 +125,19 @@ aberto, o worker pausa a varredura e os pedidos ficam `PENDING` sem gastar
 tentativas; após 30 s, 3 chamadas de teste decidem se ele fecha. Detalhes em
 [ADR 0004](docs/adr/0004-circuit-breaker-provedor.md).
 
+Um bulkhead limita a 4 as chamadas simultâneas ao provedor por instância
+(`app.provider.bulkhead.*`). Uma chamada espera até 1 s por vaga; sem vaga,
+vira falha temporária e segue o backoff.
+
+### Worker concorrente com `SKIP LOCKED`
+
+O worker reserva um lote de pedidos vencidos numa única transação com
+`SELECT ... FOR UPDATE SKIP LOCKED`, então réplicas pegam lotes disjuntos sem
+disputar as mesmas linhas. O lote (padrão 8) é processado por 4 threads. Regra
+de configuração: `ceil(batch-size / concurrency) x (timeout de conexão +
+leitura)` deve ficar abaixo da reserva de 30 s. O lock otimista e o *fencing
+token* continuam como segunda barreira.
+
 ### Eventos (outbox)
 
 Ao terminar (`COMPLETED` ou `FAILED`), o pedido grava um evento
@@ -132,7 +145,18 @@ Ao terminar (`COMPLETED` ou `FAILED`), o pedido grava um evento
 mesma transação. Um relay publica os eventos em ordem, com entrega pelo menos
 uma vez; consumidores deduplicam pelo `id` do evento. Hoje o publicador só
 registra em log; Kafka ou SNS entram como outro adaptador de `EventPublisher`.
+O relay também usa `SKIP LOCKED`, e um job a cada hora apaga eventos
+publicados há mais de 7 dias (`app.outbox.retention`).
 Detalhes em [ADR 0005](docs/adr/0005-eventos-outbox.md).
+
+### Limites de requisição
+
+- Rate limit por cliente (claim `azp`, senão `sub`): balde de 50 requisições
+  com recarga de 600 por minuto (`app.rate-limit.*`). Excesso responde `429`
+  em Problem Details com `Retry-After`. O balde fica em memória, então o limite
+  vale por instância; o gateway segue com o limite global.
+- Corpo limitado a 16 KB também em requisições *chunked*: sem
+  `Content-Length`, o filtro lê até o limite e responde `413` se passar.
 
 ### Logs e rastreamento
 
@@ -142,7 +166,8 @@ Detalhes em [ADR 0005](docs/adr/0005-eventos-outbox.md).
   cada linha.
 - Tracing com Micrometer + OpenTelemetry: spans de HTTP de entrada, do
   `RestClient` para o provedor (com propagação `traceparent`) e das tarefas
-  agendadas. A exportação OTLP só liga com
+  agendadas, e spans de JDBC (`datasource-micrometer`: conexão e query, sem
+  parâmetros). A exportação OTLP só liga com
   `MANAGEMENT_OTLP_TRACING_ENDPOINT` (por exemplo
   `http://otel-collector:4318/v1/traces`). Amostragem padrão de 10%
   (`TRACING_SAMPLING_PROBABILITY`).
@@ -264,16 +289,8 @@ publicação.
 
 ## Pontos não implementados e melhorias futuras
 
-- Bulkhead para o provedor (o circuit breaker já está implementado).
 - Reconciliação por consulta ao provedor em caso de timeout, se ele oferecer
   endpoint de status.
-- Adaptador de broker (Kafka/SNS) para o outbox e job de retenção dos eventos
-  publicados.
-- `FOR UPDATE SKIP LOCKED` ou broker quando o volume tornar a varredura de
-  pendentes um gargalo.
-- Spans de JDBC (por exemplo, `datasource-micrometer`) para separar espera
-  pelo pool e tempo de query nos traces.
-- Limite de taxa na aplicação (hoje delegado ao gateway).
-- O limite de corpo usa `Content-Length`; requisições *chunked* dependem do
-  limite do gateway.
+- Adaptador de broker (Kafka/SNS) para o outbox.
+- Rate limit distribuído (Redis) se o limite por instância não bastar.
 - Testes de carga automatizados.

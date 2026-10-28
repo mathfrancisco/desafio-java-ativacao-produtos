@@ -28,7 +28,9 @@ falhar, ou o contrário.
 
 ## Consequências
 
-- Eventos publicados ficam na tabela. Em produção, um job de retenção deve
-  apagar os antigos (por exemplo, mais de 7 dias).
-- Com várias réplicas e volume alto, `FOR UPDATE SKIP LOCKED` na leitura do
-  lote evita publicações duplicadas e trabalho repetido.
+- Um job horário apaga eventos publicados há mais de 7 dias
+  (`app.outbox.retention`).
+- O relay lê o lote com `FOR UPDATE SKIP LOCKED` e publica dentro da
+  transação, então réplicas não publicam os mesmos eventos. A transação fica
+  aberta durante a publicação; com broker real, o lote deve ser pequeno e o
+  timeout do produtor curto.
