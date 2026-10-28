@@ -18,4 +18,9 @@ public class OutboxRelayScheduler {
     public void run() {
         relay.publishPending();
     }
+
+    @Scheduled(fixedDelayString = "${app.outbox.purge-interval:1h}", initialDelayString = "${app.outbox.purge-interval:1h}")
+    public void purge() {
+        relay.purgePublished();
+    }
 }

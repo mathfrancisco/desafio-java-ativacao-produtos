@@ -3,6 +3,8 @@ package com.desafio.activation.infrastructure.provider;
 import com.desafio.activation.domain.ActivationCommand;
 import com.desafio.activation.domain.ActivationProvider;
 import com.desafio.activation.domain.ProviderResult;
+import io.github.resilience4j.bulkhead.Bulkhead;
+import io.github.resilience4j.bulkhead.BulkheadFullException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +23,8 @@ import java.net.http.HttpClient;
  * Idempotency-Key so retries after a timeout do not activate twice, provided
  * the provider honours the key. A circuit breaker counts transient failures
  * and short-circuits calls while the provider is down; rejections (4xx) count
- * as successful calls because the provider itself is healthy.
+ * as successful calls because the provider itself is healthy. A bulkhead caps
+ * concurrent calls per instance.
  */
 @Component
 public class HttpActivationProvider implements ActivationProvider {
@@ -31,10 +34,12 @@ public class HttpActivationProvider implements ActivationProvider {
 
     private final RestClient restClient;
     private final CircuitBreaker circuitBreaker;
+    private final Bulkhead bulkhead;
 
     public HttpActivationProvider(RestClient.Builder builder, ProviderProperties properties,
-                                  CircuitBreaker circuitBreaker) {
+                                  CircuitBreaker circuitBreaker, Bulkhead bulkhead) {
         this.circuitBreaker = circuitBreaker;
+        this.bulkhead = bulkhead;
         var httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(properties.connectTimeout())
@@ -52,6 +57,19 @@ public class HttpActivationProvider implements ActivationProvider {
 
     @Override
     public ProviderResult activate(ActivationCommand command) {
+        try {
+            bulkhead.acquirePermission();
+        } catch (BulkheadFullException e) {
+            return new ProviderResult.TransientFailure("provider bulkhead full");
+        }
+        try {
+            return guarded(command);
+        } finally {
+            bulkhead.onComplete();
+        }
+    }
+
+    private ProviderResult guarded(ActivationCommand command) {
         if (!circuitBreaker.tryAcquirePermission()) {
             return new ProviderResult.TransientFailure("provider circuit breaker open");
         }

@@ -1,8 +1,12 @@
 package com.desafio.activation.infrastructure.provider;
 
+import io.github.resilience4j.bulkhead.Bulkhead;
+import io.github.resilience4j.bulkhead.BulkheadConfig;
+import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.github.resilience4j.micrometer.tagged.TaggedBulkheadMetrics;
 import io.github.resilience4j.micrometer.tagged.TaggedCircuitBreakerMetrics;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.context.annotation.Bean;
@@ -28,5 +32,16 @@ class ProviderCircuitBreakerConfig {
         var registry = CircuitBreakerRegistry.of(config);
         TaggedCircuitBreakerMetrics.ofCircuitBreakerRegistry(registry).bindTo(meterRegistry);
         return registry.circuitBreaker(NAME);
+    }
+
+    @Bean
+    Bulkhead providerBulkhead(ProviderProperties properties, MeterRegistry meterRegistry) {
+        var settings = properties.bulkhead();
+        var registry = BulkheadRegistry.of(BulkheadConfig.custom()
+                .maxConcurrentCalls(settings.maxConcurrentCalls())
+                .maxWaitDuration(settings.maxWait())
+                .build());
+        TaggedBulkheadMetrics.ofBulkheadRegistry(registry).bindTo(meterRegistry);
+        return registry.bulkhead(NAME);
     }
 }

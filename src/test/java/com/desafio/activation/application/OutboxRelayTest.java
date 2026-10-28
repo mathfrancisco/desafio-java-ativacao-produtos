@@ -11,7 +11,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -70,5 +72,21 @@ class OutboxRelayTest {
 
         verify(publisher, times(1)).publish(any());
         assertThat(repository.findAll()).allSatisfy(e -> assertThat(e.getPublishedAt()).isNull());
+    }
+
+    @Test
+    void purgeDeletesOnlyEventsPublishedBeforeRetention() {
+        Instant now = Instant.now();
+        var old = OutboxEvent.create(UUID.randomUUID(), "activation.completed", "{}", now.minus(Duration.ofDays(9)));
+        old.markPublished(now.minus(Duration.ofDays(8)));
+        var recent = OutboxEvent.create(UUID.randomUUID(), "activation.completed", "{}", now.minus(Duration.ofDays(2)));
+        recent.markPublished(now.minus(Duration.ofDays(1)));
+        var unpublished = saveEvent(now.minus(Duration.ofDays(30)));
+        repository.saveAll(List.of(old, recent));
+
+        assertThat(relay.purgePublished()).isEqualTo(1);
+
+        assertThat(repository.findAll()).extracting(OutboxEvent::getId)
+                .containsExactlyInAnyOrder(recent.getId(), unpublished.getId());
     }
 }

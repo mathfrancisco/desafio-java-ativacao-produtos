@@ -7,11 +7,15 @@ spring:
 app:
   provider:
     base-url: http://localhost:${wiremock.port:65000}
-    read-timeout: 500ms
+    # Generous enough for a cold first call; the timeout test delays 2.5 s.
+    read-timeout: 1s
     circuit-breaker:
       # Tests share one context; keep the breaker closed for provider error scenarios.
       minimum-number-of-calls: 1000
       sliding-window-size: 1000
+  rate-limit:
+    # Shared test context: effectively unlimited; RateLimitTest overrides it.
+    burst: 100000
   processing:
     worker-enabled: false
   outbox:

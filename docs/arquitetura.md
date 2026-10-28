@@ -49,6 +49,9 @@ A troca por um broker está descrita em melhorias futuras.
 | `RestClient` (Spring 6) com `JdkClientHttpRequestFactory` | Cliente HTTP síncrono com timeouts de conexão e leitura; sem dependência extra. |
 | `resilience4j-circuitbreaker` + `resilience4j-micrometer` | Circuit breaker do provedor e suas métricas (ADR 0004). |
 | `micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp` | Traces e propagação W3C; exportação OTLP opcional. |
+| `resilience4j-bulkhead` | Limite de chamadas simultâneas ao provedor. |
+| `datasource-micrometer-spring-boot` | Spans e métricas de JDBC (conexão, query). |
+| `bucket4j_jdk17-core` + Caffeine | Rate limit por cliente em memória, com expiração dos baldes. |
 | H2 (somente testes) | Testes rápidos sem Docker. |
 | Testcontainers PostgreSQL (somente testes) | Teste de concorrência contra banco real; ignorado sem Docker. |
 | WireMock (somente testes) | Simula o provedor: sucesso, 400, 500, 503 e timeout. |

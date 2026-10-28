@@ -31,5 +31,5 @@ pedidos batam ao mesmo tempo num provedor já indisponível.
 
 - O estado é por instância. Com várias réplicas, cada uma abre o próprio
   circuito; isso basta para proteger o provedor sem coordenação.
-- Bulkhead (limite de chamadas concorrentes) segue fora: o worker já é
-  sequencial por instância e o lote é limitado (`batch-size`).
+- Com o worker concorrente, um bulkhead Resilience4j limita as chamadas
+  simultâneas ao provedor (padrão 4 por instância, espera de até 1 s).
