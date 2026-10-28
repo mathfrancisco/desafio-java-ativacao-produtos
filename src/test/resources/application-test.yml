@@ -1,0 +1,12 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:activation;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+
+app:
+  provider:
+    base-url: http://localhost:${wiremock.port:65000}
+    read-timeout: 500ms
+  processing:
+    worker-enabled: false
