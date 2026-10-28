@@ -3,6 +3,8 @@ package com.desafio.activation.application;
 import com.desafio.activation.domain.ActivationRequest;
 import com.desafio.activation.domain.ActivationRequestRepository;
 import com.desafio.activation.domain.ActivationStatus;
+import com.desafio.activation.domain.OutboxEvent;
+import com.desafio.activation.domain.OutboxEventRepository;
 import com.desafio.activation.support.MutableClock;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +22,7 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
@@ -64,11 +67,19 @@ class ActivationProcessorIntegrationTest {
     private ActivationRequestRepository repository;
 
     @Autowired
+    private OutboxEventRepository outbox;
+
+    @Autowired
     private MutableClock clock;
 
     @BeforeEach
     void cleanDatabase() {
+        outbox.deleteAll();
         repository.deleteAll();
+    }
+
+    private List<String> eventTypes(UUID id) {
+        return outbox.findByAggregateIdOrderByCreatedAt(id).stream().map(OutboxEvent::getEventType).toList();
     }
 
     private UUID pendingRequest() {
@@ -92,6 +103,9 @@ class ActivationProcessorIntegrationTest {
         var request = reload(id);
         assertThat(request.getStatus()).isEqualTo(ActivationStatus.COMPLETED);
         assertThat(request.getAttempts()).isEqualTo(1);
+        assertThat(eventTypes(id)).containsExactly("activation.completed");
+        assertThat(outbox.findByAggregateIdOrderByCreatedAt(id).getFirst().getPayload())
+                .contains("\"externalId\":\"%s\"".formatted(externalId), "\"status\":\"COMPLETED\"");
         provider.verify(postRequestedFor(urlEqualTo(ACTIVATE))
                 .withHeader("Idempotency-Key", equalTo(externalId))
                 .withRequestBody(equalToJson("""
@@ -108,6 +122,7 @@ class ActivationProcessorIntegrationTest {
         var request = reload(id);
         assertThat(request.getStatus()).isEqualTo(ActivationStatus.FAILED);
         assertThat(request.getFailureReason()).isEqualTo("provider rejected request with 400");
+        assertThat(eventTypes(id)).containsExactly("activation.failed");
         provider.verify(1, postRequestedFor(urlEqualTo(ACTIVATE)));
     }
 
@@ -122,6 +137,7 @@ class ActivationProcessorIntegrationTest {
         assertThat(request.getStatus()).isEqualTo(ActivationStatus.PENDING);
         assertThat(request.getAttempts()).isEqualTo(1);
         assertThat(request.getNextAttemptAt()).isAfterOrEqualTo(clock.instant());
+        assertThat(eventTypes(id)).isEmpty();
     }
 
     @Test

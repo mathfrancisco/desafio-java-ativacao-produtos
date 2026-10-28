@@ -4,6 +4,8 @@ import com.desafio.activation.domain.ActivationCommand;
 import com.desafio.activation.domain.ActivationProvider;
 import com.desafio.activation.domain.ActivationRequest;
 import com.desafio.activation.domain.ActivationRequestRepository;
+import com.desafio.activation.domain.ActivationStatus;
+import com.desafio.activation.domain.OutboxEventRepository;
 import com.desafio.activation.domain.ProviderResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +23,7 @@ import java.util.UUID;
  * Processes one request: claim it (short transaction), call the provider with
  * no transaction open, then record the outcome (short transaction). The attempt
  * number taken at claim time fences out workers whose lease already expired.
+ * Final states also write an outbox event in the same transaction.
  */
 @Component
 public class ActivationProcessor {
@@ -29,16 +32,20 @@ public class ActivationProcessor {
 
     private final ActivationRequestRepository repository;
     private final ActivationProvider provider;
+    private final OutboxEventRepository outbox;
+    private final ActivationEvents events;
     private final RetryPolicy retryPolicy;
     private final TransactionTemplate transaction;
     private final Clock clock;
     private final Duration lease;
 
     public ActivationProcessor(ActivationRequestRepository repository, ActivationProvider provider,
-                               RetryPolicy retryPolicy, TransactionTemplate transaction, Clock clock,
-                               ProcessingProperties properties) {
+                               OutboxEventRepository outbox, ActivationEvents events, RetryPolicy retryPolicy,
+                               TransactionTemplate transaction, Clock clock, ProcessingProperties properties) {
         this.repository = repository;
         this.provider = provider;
+        this.outbox = outbox;
+        this.events = events;
         this.retryPolicy = retryPolicy;
         this.transaction = transaction;
         this.clock = clock;
@@ -109,5 +116,8 @@ public class ActivationProcessor {
             }
         }
         repository.saveAndFlush(request);
+        if (request.getStatus() == ActivationStatus.COMPLETED || request.getStatus() == ActivationStatus.FAILED) {
+            outbox.save(events.finished(request, now));
+        }
     }
 }
