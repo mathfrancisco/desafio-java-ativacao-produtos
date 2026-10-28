@@ -23,7 +23,7 @@ class RetryPolicyTest {
     @Test
     void jitterStaysWithinCeiling() {
         var policy = new RetryPolicy(new ProcessingProperties(5, Duration.ofSeconds(2), Duration.ofSeconds(30),
-                Duration.ofSeconds(30), 10));
+                Duration.ofSeconds(30), 10, 4));
 
         for (int i = 0; i < 200; i++) {
             assertThat(policy.delayAfter(3)).isBetween(Duration.ZERO, Duration.ofSeconds(8));

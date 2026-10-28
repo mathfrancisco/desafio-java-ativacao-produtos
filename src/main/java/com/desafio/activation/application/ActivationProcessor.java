@@ -10,17 +10,19 @@ import com.desafio.activation.domain.ProviderResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Processes one request: claim it (short transaction), call the provider with
+ * Processes requests: claim them (short transaction), call the provider with
  * no transaction open, then record the outcome (short transaction). The attempt
  * number taken at claim time fences out workers whose lease already expired.
  * Final states also write an outbox event in the same transaction.
@@ -53,11 +55,25 @@ public class ActivationProcessor {
     }
 
     public void process(UUID id) {
-        Optional<ActivationRequest> claimed = claim(id);
-        if (claimed.isEmpty()) {
-            return;
-        }
-        var request = claimed.get();
+        claim(id).ifPresent(this::execute);
+    }
+
+    /**
+     * Claims up to {@code limit} due requests in one transaction. Rows locked by
+     * another worker are skipped, so concurrent workers never claim the same request.
+     */
+    public List<ActivationRequest> claimDue(int limit) {
+        return transaction.execute(status -> {
+            Instant now = clock.instant();
+            var claimed = repository.lockDue(now, PageRequest.of(0, limit));
+            claimed.forEach(request -> request.startProcessing(now, lease));
+            return repository.saveAllAndFlush(claimed);
+        });
+    }
+
+    /** Calls the provider for a request already claimed by this worker and records the outcome. */
+    public void execute(ActivationRequest request) {
+        UUID id = request.getId();
         int attempt = request.getAttempts();
         ProviderResult result = attempt > retryPolicy.maxAttempts()
                 ? new ProviderResult.PermanentFailure("maximum attempts exceeded")

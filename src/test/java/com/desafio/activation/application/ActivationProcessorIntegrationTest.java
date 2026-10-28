@@ -142,7 +142,7 @@ class ActivationProcessorIntegrationTest {
 
     @Test
     void timeoutSchedulesRetry() {
-        provider.stubFor(post(ACTIVATE).willReturn(aResponse().withStatus(200).withFixedDelay(1500)));
+        provider.stubFor(post(ACTIVATE).willReturn(aResponse().withStatus(200).withFixedDelay(2500)));
         var id = pendingRequest();
 
         processor.process(id);

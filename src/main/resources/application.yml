@@ -57,10 +57,20 @@ app:
       minimum-number-of-calls: 10
       wait-duration-in-open-state: 30s
       permitted-calls-in-half-open-state: 3
+    bulkhead:
+      max-concurrent-calls: 4
+      max-wait: 1s
+  rate-limit:
+    # Per client and per instance; the gateway keeps the global limit.
+    enabled: ${RATE_LIMIT_ENABLED:true}
+    requests-per-minute: ${RATE_LIMIT_PER_MINUTE:600}
+    burst: ${RATE_LIMIT_BURST:50}
   processing:
     worker-enabled: ${WORKER_ENABLED:true}
     poll-interval: 1s
-    batch-size: 20
+    # Batch must finish within the lease: ceil(batch-size / concurrency) x (connect + read timeout) < lease.
+    batch-size: 8
+    concurrency: 4
     lease: 30s
     max-attempts: 5
     retry-base-delay: 2s
@@ -69,6 +79,8 @@ app:
     relay-enabled: ${OUTBOX_RELAY_ENABLED:true}
     poll-interval: 1s
     batch-size: 100
+    retention: 7d
+    purge-interval: 1h
 
 # JSON logs: set LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs (the Docker image does).
 logging:
