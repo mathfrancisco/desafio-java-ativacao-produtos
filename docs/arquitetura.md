@@ -47,6 +47,8 @@ A troca por um broker está descrita em melhorias futuras.
 | PostgreSQL 17 + driver `postgresql` | Banco relacional de execução. |
 | Flyway (`flyway-core`, `flyway-database-postgresql`) | Migrações versionadas. |
 | `RestClient` (Spring 6) com `JdkClientHttpRequestFactory` | Cliente HTTP síncrono com timeouts de conexão e leitura; sem dependência extra. |
+| `resilience4j-circuitbreaker` + `resilience4j-micrometer` | Circuit breaker do provedor e suas métricas (ADR 0004). |
+| `micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp` | Traces e propagação W3C; exportação OTLP opcional. |
 | H2 (somente testes) | Testes rápidos sem Docker. |
 | Testcontainers PostgreSQL (somente testes) | Teste de concorrência contra banco real; ignorado sem Docker. |
 | WireMock (somente testes) | Simula o provedor: sucesso, 400, 500, 503 e timeout. |
@@ -54,7 +56,7 @@ A troca por um broker está descrita em melhorias futuras.
 | ArchUnit (somente testes) | Garante que o domínio não depende da API nem da infraestrutura. |
 
 Ficaram fora, por não serem necessários: Lombok (records e código explícito
-bastam), MapStruct (mapeamento em uma linha), Resilience4j (retry/backoff são
+bastam), MapStruct (mapeamento em uma linha), Resilience4j Retry (retry/backoff são
 resolvidos pelo agendamento persistido; ver ADR 0003).
 
 ## Estrutura do projeto
@@ -124,6 +126,21 @@ Tabela `activation_request`:
 - `ix_activation_request_client_status (client_id, status, created_at)` e
   `ix_activation_request_client_customer (client_id, customer_id, created_at)`:
   listagem filtrada e paginada, sempre escopada ao cliente e ordenada por data.
+
+Tabela `outbox_event` (ADR 0005):
+
+| Coluna | Tipo | Regra |
+|---|---|---|
+| `id` | `uuid` PK | Id do evento; chave de deduplicação do consumidor. |
+| `aggregate_id` | `uuid` | Pedido que gerou o evento. |
+| `event_type` | `varchar(64)` | `activation.completed` ou `activation.failed`. |
+| `payload` | `varchar(4000)` | JSON do estado final. |
+| `created_at` | `timestamptz` | Ordem de publicação. |
+| `published_at` | `timestamptz` | Nulo até o relay publicar. |
+
+Índices: `ix_outbox_event_unpublished (published_at, created_at)` para o relay
+e `ix_outbox_event_aggregate (aggregate_id, created_at)` para consulta por
+pedido.
 
 ### Máquina de estados
 
@@ -227,3 +244,5 @@ Registradas em [docs/adr](adr):
 - [0001 — Fila persistida na própria tabela](adr/0001-fila-persistida-no-banco.md)
 - [0002 — Duplicidade por restrição única e semântica de repetição](adr/0002-duplicidade-externalid.md)
 - [0003 — Política de integração e tentativas](adr/0003-politica-integracao.md)
+- [0004 — Circuit breaker no provedor](adr/0004-circuit-breaker-provedor.md)
+- [0005 — Eventos de estado final via outbox transacional](adr/0005-eventos-outbox.md)

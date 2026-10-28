@@ -117,6 +117,36 @@ Detalhes em [ADR 0002](docs/adr/0002-duplicidade-externalid.md).
 
 Detalhes em [ADR 0003](docs/adr/0003-politica-integracao.md).
 
+### Circuit breaker
+
+Resilience4j abre o circuito quando 50% das últimas 20 chamadas ao provedor
+(mínimo de 10) são falhas temporárias. Rejeições 4xx não contam. Com o circuito
+aberto, o worker pausa a varredura e os pedidos ficam `PENDING` sem gastar
+tentativas; após 30 s, 3 chamadas de teste decidem se ele fecha. Detalhes em
+[ADR 0004](docs/adr/0004-circuit-breaker-provedor.md).
+
+### Eventos (outbox)
+
+Ao terminar (`COMPLETED` ou `FAILED`), o pedido grava um evento
+`activation.completed` ou `activation.failed` na tabela `outbox_event`, na
+mesma transação. Um relay publica os eventos em ordem, com entrega pelo menos
+uma vez; consumidores deduplicam pelo `id` do evento. Hoje o publicador só
+registra em log; Kafka ou SNS entram como outro adaptador de `EventPublisher`.
+Detalhes em [ADR 0005](docs/adr/0005-eventos-outbox.md).
+
+### Logs e rastreamento
+
+- A imagem Docker emite logs JSON no formato ECS
+  (`LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`). Fora do Docker, sem a variável,
+  o formato é texto. `traceId`, `spanId`, `correlationId` e `requestId` vão em
+  cada linha.
+- Tracing com Micrometer + OpenTelemetry: spans de HTTP de entrada, do
+  `RestClient` para o provedor (com propagação `traceparent`) e das tarefas
+  agendadas. A exportação OTLP só liga com
+  `MANAGEMENT_OTLP_TRACING_ENDPOINT` (por exemplo
+  `http://otel-collector:4318/v1/traces`). Amostragem padrão de 10%
+  (`TRACING_SAMPLING_PROBABILITY`).
+
 ### Erros
 
 Todas as respostas de erro seguem Problem Details (RFC 9457) com
@@ -224,23 +254,25 @@ publicação.
 - **Borda:** API Gateway / Ingress com TLS, limite de taxa por cliente e
   tamanho de requisição.
 - **Observabilidade:** métricas em `/actuator/prometheus` (HTTP, JVM, pool,
-  cliente HTTP); logs com `correlationId` e `requestId`, sem segredos; alertas
-  para pedidos `PENDING` antigos, taxa de `FAILED` e latência do provedor.
+  cliente HTTP, circuit breaker); logs JSON com `traceId`, `correlationId` e
+  `requestId`, sem segredos; traces OTLP; alertas para pedidos `PENDING`
+  antigos, taxa de `FAILED`, circuito aberto, eventos não publicados e latência
+  do provedor.
 - **CI/CD:** o workflow `.github/workflows/ci.yml` executa `./mvnw verify` e
   constrói a imagem; a evolução é publicar a imagem e fazer deploy por
   ambiente com canário.
 
 ## Pontos não implementados e melhorias futuras
 
-- Circuit breaker e bulkhead para o provedor (Resilience4j).
+- Bulkhead para o provedor (o circuit breaker já está implementado).
 - Reconciliação por consulta ao provedor em caso de timeout, se ele oferecer
   endpoint de status.
-- Publicação de eventos de mudança de estado (outbox para Kafka/SNS) para
-  notificar consumidores em vez de exigir *polling*.
+- Adaptador de broker (Kafka/SNS) para o outbox e job de retenção dos eventos
+  publicados.
 - `FOR UPDATE SKIP LOCKED` ou broker quando o volume tornar a varredura de
   pendentes um gargalo.
-- Logs JSON e exportação de traces OpenTelemetry (hoje: logs em texto com
-  correlação e métricas Prometheus).
+- Spans de JDBC (por exemplo, `datasource-micrometer`) para separar espera
+  pelo pool e tempo de query nos traces.
 - Limite de taxa na aplicação (hoje delegado ao gateway).
 - O limite de corpo usa `Content-Length`; requisições *chunked* dependem do
   limite do gateway.
