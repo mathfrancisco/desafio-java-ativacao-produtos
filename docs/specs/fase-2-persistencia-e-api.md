@@ -22,16 +22,15 @@ concorrente passa.
 ## Card 2.2 — Repositório
 
 - **Dependências:** 2.1.
-- **Arquivos:** `infrastructure/persistence/ActivationRequestRepository.java`.
+- **Arquivos:** `domain/ActivationRequestRepository.java`.
 - **Passos:**
   1. `findByExternalId`, `findByIdAndClientId`.
   2. Busca paginada por `clientId` com filtros opcionais `status` e
-     `customerId`.
-  3. `findDueIds(now, limit)` para o worker.
-  4. `claim(id, version, now, lockedUntil)` e `applyResult(...)` como `UPDATE`
-     condicionais (`@Modifying`).
-- **Critérios de aceite:** `claim` retorna 1 para o primeiro chamador e 0 para
-  uma versão desatualizada.
+     `customerId` (`JpaSpecificationExecutor`).
+  3. `findDueIds(now, pageable)` para o worker: pendentes vencidos e
+     `PROCESSING` com reserva expirada.
+- **Critérios de aceite:** gravação com versão desatualizada lança
+  `OptimisticLockingFailureException` (`@Version`).
 
 ## Card 2.3 — Caso de uso de criação com semântica de repetição
 

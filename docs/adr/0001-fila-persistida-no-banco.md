@@ -16,14 +16,15 @@ A tabela `activation_request` é a fila. O `POST` só grava o pedido como
 
 1. Seleciona um lote de ids vencidos: `PENDING` com `next_attempt_at <= agora`
    ou `PROCESSING` com `locked_until < agora` (reserva expirada).
-2. Reserva cada id com um `UPDATE ... WHERE id = ? AND version = ?` condicional
-   (lock otimista). Apenas uma instância consegue a reserva; as outras recebem
-   zero linhas afetadas e seguem.
+2. Reserva cada id em uma transação curta: carrega o pedido, chama
+   `startProcessing` e grava. O `@Version` gera `UPDATE ... WHERE version = ?`;
+   apenas uma instância consegue a reserva e as outras recebem
+   `OptimisticLockingFailureException` e seguem.
 3. Chama o provedor sem transação aberta.
-4. Grava o resultado com outro `UPDATE` condicionado a `status = PROCESSING` e
-   `attempts = <tentativa reservada>`. Esse número funciona como *fencing
-   token*: um worker antigo, cuja reserva expirou e foi retomada por outro, não
-   sobrescreve o resultado mais novo.
+4. Grava o resultado em outra transação curta, somente se o pedido ainda está
+   em `PROCESSING` com `attempts = <tentativa reservada>`. Esse número funciona
+   como *fencing token*: um worker antigo, cuja reserva expirou e foi retomada
+   por outro, não sobrescreve o resultado mais novo.
 
 ## Consequências
 

@@ -64,31 +64,37 @@ src/main/java/com/desafio/activation
 ├── ActivationApplication.java
 ├── api                      # Camada HTTP: controllers, DTOs, erros
 │   ├── ActivationRequestController.java
+│   ├── AuthenticatedClient.java  # identidade do cliente a partir do JWT
 │   ├── dto/                 # CreateActivationRequest, ActivationRequestResponse, PageResponse
 │   └── error/               # ApiExceptionHandler (Problem Details)
 ├── application              # Casos de uso e orquestração
 │   ├── ActivationRequestService.java
 │   ├── ActivationProcessor.java
 │   ├── ActivationWorker.java
+│   ├── ProcessingProperties.java
 │   ├── RetryPolicy.java
-│   └── exceptions           # DuplicateExternalIdException, RequestNotFoundException
-├── domain                   # Modelo e regras puras
+│   └── exceptions/          # DuplicateExternalIdException, RequestNotFoundException
+├── domain                   # Modelo, regras e portas
 │   ├── ActivationRequest.java
 │   ├── ActivationStatus.java
-│   ├── ActivationProvider.java   # porta para o provedor
+│   ├── ActivationRequestRepository.java  # porta de persistência (Spring Data)
+│   ├── ActivationProvider.java           # porta para o provedor
+│   ├── ActivationCommand.java
 │   └── ProviderResult.java
 └── infrastructure
-    ├── persistence/         # ActivationRequestRepository (Spring Data)
     ├── provider/            # HttpActivationProvider (RestClient) + propriedades
-    ├── security/            # SecurityConfig, ClientIdentity
-    └── web/                 # CorrelationIdFilter
+    ├── security/            # SecurityConfig, JwtProperties
+    └── web/                 # CorrelationIdFilter, RequestSizeLimitFilter
 src/main/resources
 ├── application.yml
 └── db/migration/V1__create_activation_request.sql
 ```
 
 Regra de dependência: `api → application → domain ← infrastructure`. O domínio
-não importa Spring MVC, segurança nem HTTP. A regra é verificada por ArchUnit.
+não importa Spring MVC, segurança nem HTTP; a aplicação não conhece a API nem
+os adaptadores; a API não acessa repositórios. As regras são verificadas por
+ArchUnit (`ArchitectureTest`). O repositório Spring Data fica no domínio como
+porta de persistência, uma concessão pragmática para não duplicar interfaces.
 
 ## Modelagem de dados
 
@@ -131,7 +137,9 @@ PROCESSING com reserva expirada ──reconciliação──▶ novo claim (mesma
 
 As transições ficam em `ActivationRequest` (`startProcessing`, `complete`,
 `scheduleRetry`, `fail`); qualquer transição inválida gera
-`IllegalStateException`.
+`IllegalStateException`. O worker reserva e grava o resultado por meio desses
+métodos, com `@Version` (lock otimista) protegendo cada gravação e o número da
+tentativa servindo de *fencing token*.
 
 ## Design da API
 
