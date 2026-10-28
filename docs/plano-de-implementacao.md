@@ -1,9 +1,9 @@
 # Plano de implementação
 
-Este plano organiza o trabalho futuro para cumprir o enunciado em uma solução
-pequena. A stack abaixo é uma proposta de trabalho, ainda não aprovada como
-decisão final: Java 21, Spring Boot 3.x, Maven, PostgreSQL e Spring Data JPA.
-Não são especificadas versões exatas de dependências.
+Este plano organiza o trabalho para cumprir o enunciado em uma solução
+pequena. Stack adotada: Java 21, Spring Boot 3.5, Maven, PostgreSQL 17,
+Flyway e Spring Data JPA (ver [arquitetura.md](arquitetura.md)). O
+detalhamento em cards está em [specs](specs/README.md).
 
 ## Sequência proposta
 
