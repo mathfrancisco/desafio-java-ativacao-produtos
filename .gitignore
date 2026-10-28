@@ -1,0 +1,33 @@
+# Maven and Java build output
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+*.war
+*.ear
+
+# Logs and runtime output
+*.log
+logs/
+hs_err_pid*
+replay_pid*
+
+# IDE metadata
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+.factorypath
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+application-local.yml
+application-local.yaml
+
+# Operating system files
+.DS_Store
+Thumbs.db
