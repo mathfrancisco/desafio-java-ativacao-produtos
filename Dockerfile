@@ -18,7 +18,8 @@ COPY --from=build /workspace/target/extracted/snapshot-dependencies/ ./
 COPY --from=build /workspace/target/extracted/application/ ./
 USER 10001
 EXPOSE 8080
-ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError" \
+    LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs
 HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=5 \
     CMD wget -qO- http://localhost:8080/actuator/health/readiness || exit 1
 ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]

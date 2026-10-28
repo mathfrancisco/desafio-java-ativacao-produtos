@@ -1,5 +1,6 @@
 package com.desafio.activation.application;
 
+import com.desafio.activation.domain.ActivationProvider;
 import com.desafio.activation.domain.ActivationRequestRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,7 +12,10 @@ import org.springframework.stereotype.Component;
 
 import java.time.Clock;
 
-/** Polls due requests (pending or with an expired lease) and hands each one to the processor. */
+/**
+ * Polls due requests (pending or with an expired lease) and hands each one to the processor.
+ * Skips the poll while the provider circuit is open so requests keep their remaining attempts.
+ */
 @Component
 @ConditionalOnProperty(name = "app.processing.worker-enabled", havingValue = "true", matchIfMissing = true)
 public class ActivationWorker {
@@ -20,19 +24,25 @@ public class ActivationWorker {
 
     private final ActivationRequestRepository repository;
     private final ActivationProcessor processor;
+    private final ActivationProvider provider;
     private final Clock clock;
     private final int batchSize;
 
-    public ActivationWorker(ActivationRequestRepository repository, ActivationProcessor processor, Clock clock,
-                            ProcessingProperties properties) {
+    public ActivationWorker(ActivationRequestRepository repository, ActivationProcessor processor,
+                            ActivationProvider provider, Clock clock, ProcessingProperties properties) {
         this.repository = repository;
         this.processor = processor;
+        this.provider = provider;
         this.clock = clock;
         this.batchSize = properties.batchSize();
     }
 
     @Scheduled(fixedDelayString = "${app.processing.poll-interval:1s}")
     public void run() {
+        if (!provider.isAvailable()) {
+            log.debug("Provider unavailable (circuit open), skipping poll");
+            return;
+        }
         for (var id : repository.findDueIds(clock.instant(), PageRequest.of(0, batchSize))) {
             MDC.put("requestId", id.toString());
             try {

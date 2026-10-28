@@ -33,6 +33,11 @@ management:
     health:
       probes:
         enabled: true
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:0.1}
+  # Traces are exported only when MANAGEMENT_OTLP_TRACING_ENDPOINT is set
+  # (e.g. http://otel-collector:4318/v1/traces).
 
 app:
   security:
@@ -46,6 +51,12 @@ app:
     base-url: ${PROVIDER_BASE_URL:http://localhost:8089}
     connect-timeout: ${PROVIDER_CONNECT_TIMEOUT:2s}
     read-timeout: ${PROVIDER_READ_TIMEOUT:5s}
+    circuit-breaker:
+      failure-rate-threshold: 50
+      sliding-window-size: 20
+      minimum-number-of-calls: 10
+      wait-duration-in-open-state: 30s
+      permitted-calls-in-half-open-state: 3
   processing:
     worker-enabled: ${WORKER_ENABLED:true}
     poll-interval: 1s
@@ -54,7 +65,12 @@ app:
     max-attempts: 5
     retry-base-delay: 2s
     retry-max-delay: 5m
+  outbox:
+    relay-enabled: ${OUTBOX_RELAY_ENABLED:true}
+    poll-interval: 1s
+    batch-size: 100
 
+# JSON logs: set LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs (the Docker image does).
 logging:
   pattern:
     level: "%5p [correlationId=%X{correlationId:-} requestId=%X{requestId:-}]"

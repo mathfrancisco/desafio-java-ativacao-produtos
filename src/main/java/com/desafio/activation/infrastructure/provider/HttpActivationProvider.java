@@ -3,6 +3,7 @@ package com.desafio.activation.infrastructure.provider;
 import com.desafio.activation.domain.ActivationCommand;
 import com.desafio.activation.domain.ActivationProvider;
 import com.desafio.activation.domain.ProviderResult;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -18,7 +19,9 @@ import java.net.http.HttpClient;
 /**
  * HTTP adapter for POST /provider/v1/activate. The externalId is sent as the
  * Idempotency-Key so retries after a timeout do not activate twice, provided
- * the provider honours the key.
+ * the provider honours the key. A circuit breaker counts transient failures
+ * and short-circuits calls while the provider is down; rejections (4xx) count
+ * as successful calls because the provider itself is healthy.
  */
 @Component
 public class HttpActivationProvider implements ActivationProvider {
@@ -27,8 +30,11 @@ public class HttpActivationProvider implements ActivationProvider {
     private static final Logger log = LoggerFactory.getLogger(HttpActivationProvider.class);
 
     private final RestClient restClient;
+    private final CircuitBreaker circuitBreaker;
 
-    public HttpActivationProvider(RestClient.Builder builder, ProviderProperties properties) {
+    public HttpActivationProvider(RestClient.Builder builder, ProviderProperties properties,
+                                  CircuitBreaker circuitBreaker) {
+        this.circuitBreaker = circuitBreaker;
         var httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(properties.connectTimeout())
@@ -39,7 +45,29 @@ public class HttpActivationProvider implements ActivationProvider {
     }
 
     @Override
+    public boolean isAvailable() {
+        return circuitBreaker.getState() != CircuitBreaker.State.OPEN
+                && circuitBreaker.getState() != CircuitBreaker.State.FORCED_OPEN;
+    }
+
+    @Override
     public ProviderResult activate(ActivationCommand command) {
+        if (!circuitBreaker.tryAcquirePermission()) {
+            return new ProviderResult.TransientFailure("provider circuit breaker open");
+        }
+        long start = circuitBreaker.getCurrentTimestamp();
+        ProviderResult result = call(command);
+        long duration = circuitBreaker.getCurrentTimestamp() - start;
+        if (result instanceof ProviderResult.TransientFailure failure) {
+            circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(),
+                    new ProviderUnavailableException(failure.reason()));
+        } else {
+            circuitBreaker.onSuccess(duration, circuitBreaker.getTimestampUnit());
+        }
+        return result;
+    }
+
+    private ProviderResult call(ActivationCommand command) {
         try {
             return restClient.post()
                     .uri(ACTIVATE_PATH)
@@ -69,5 +97,11 @@ public class HttpActivationProvider implements ActivationProvider {
     }
 
     record ProviderActivationRequest(String externalId, String customerId, String productCode) {
+    }
+
+    private static final class ProviderUnavailableException extends RuntimeException {
+        ProviderUnavailableException(String reason) {
+            super(reason, null, false, false);
+        }
     }
 }
