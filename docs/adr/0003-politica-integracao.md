@@ -34,5 +34,5 @@ exatamente uma vez (ver README).
 
 - Resilience4j Retry em memória: perde o estado se o processo cair e prende uma
   thread durante a espera. O agendamento persistido resolve os dois pontos.
-- Circuit breaker: útil com muito tráfego; aqui o backoff persistido já reduz a
-  pressão sobre o provedor. Fica como melhoria futura.
+- Circuit breaker: inicialmente adiado; adotado depois na
+  [ADR 0004](0004-circuit-breaker-provedor.md).

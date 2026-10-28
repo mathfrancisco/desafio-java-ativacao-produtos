@@ -8,5 +8,11 @@ app:
   provider:
     base-url: http://localhost:${wiremock.port:65000}
     read-timeout: 500ms
+    circuit-breaker:
+      # Tests share one context; keep the breaker closed for provider error scenarios.
+      minimum-number-of-calls: 1000
+      sliding-window-size: 1000
   processing:
     worker-enabled: false
+  outbox:
+    relay-enabled: false

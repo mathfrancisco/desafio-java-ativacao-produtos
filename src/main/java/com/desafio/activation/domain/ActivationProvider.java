@@ -4,4 +4,9 @@ package com.desafio.activation.domain;
 public interface ActivationProvider {
 
     ProviderResult activate(ActivationCommand command);
+
+    /** False while calls are known to fail (circuit open); callers should wait instead of spending attempts. */
+    default boolean isAvailable() {
+        return true;
+    }
 }
